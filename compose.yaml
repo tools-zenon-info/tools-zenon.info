@@ -1,0 +1,170 @@
+name: tools-zenon-info
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [zt-net]
+    logging: *default-logging
+
+  znnd-bootstrap:
+    build:
+      context: ./scripts
+      dockerfile: ../dockerfiles/znnd-bootstrap.Dockerfile
+    # One-shot: no-ops if /data/nom exists (and FORCE_BOOTSTRAP != true).
+    restart: "no"
+    environment:
+      BOOTSTRAP_URL: ${ZNND_BOOTSTRAP_URL:-}
+      FORCE_BOOTSTRAP: ${ZNND_FORCE_BOOTSTRAP:-false}
+    volumes:
+      - znnd_data:/data
+    networks: [zt-net]
+    logging: *default-logging
+
+  znnd:
+    build:
+      context: ./dockerfiles
+      dockerfile: znnd.Dockerfile
+      args:
+        ZNND_GIT_REF: ${ZNND_GIT_REF}
+    restart: unless-stopped
+    depends_on:
+      znnd-bootstrap:
+        condition: service_completed_successfully
+    ports:
+      # P2P only; RPC/WS stay internal to the compose network.
+      - "35995:35995/tcp"
+      - "35995:35995/udp"
+    volumes:
+      - znnd_data:/root/.znn
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -X POST http://localhost:35997 -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ledger.getFrontierMomentum\"}' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks: [zt-net]
+    logging: *default-logging
+
+  nom-indexer:
+    build:
+      context: ../nom-indexer
+      dockerfile: ../tools.zenon.info/dockerfiles/indexer.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      znnd:
+        condition: service_started
+    volumes:
+      - ./configs/indexer.config.yaml:/app/config.yaml:ro
+    networks: [zt-net]
+    logging: *default-logging
+
+  nom-refiner:
+    build:
+      context: ../nom-data-refiner
+      dockerfile: ../tools.zenon.info/dockerfiles/refiner.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      znnd:
+        condition: service_started
+    volumes:
+      - refiner_data:/app/nom_data_refiner/data_store
+      - ./configs/refiner.config.json:/app/nom_data_refiner/config/config.json:ro
+    networks: [zt-net]
+    logging: *default-logging
+
+  zt-server:
+    build:
+      context: ../zt-server
+      dockerfile: ../tools.zenon.info/dockerfiles/zt-server.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nom-indexer:
+        condition: service_started
+    volumes:
+      - refiner_data:/data/refiner:ro
+      - pillars_data:/data/pillars
+      - stats_data:/data/stats
+      - ./configs/zt-server.config.yaml:/app/config.yaml:ro
+    expose:
+      - "8080"
+    networks: [zt-net]
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ../zt-frontend
+      dockerfile: ../tools.zenon.info/dockerfiles/frontend.Dockerfile
+      args:
+        ZT_API_URL: https://${DOMAIN_API}
+    # One-shot: builds static assets into the frontend_dist volume and exits.
+    restart: "no"
+    volumes:
+      - frontend_dist:/dist
+    networks: [zt-net]
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN_FRONTEND: ${DOMAIN_FRONTEND}
+      DOMAIN_API: ${DOMAIN_API}
+      ACME_EMAIL: ${ACME_EMAIL}
+    depends_on:
+      frontend:
+        condition: service_completed_successfully
+      zt-server:
+        condition: service_started
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - frontend_dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [zt-net]
+    logging: *default-logging
+
+networks:
+  zt-net:
+    driver: bridge
+
+volumes:
+  pg_data:
+  znnd_data:
+  refiner_data:
+  pillars_data:
+  stats_data:
+  frontend_dist:
+  caddy_data:
+  caddy_config:

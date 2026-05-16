@@ -1,0 +1,13 @@
+server_port: 8080
+
+database_address: 'postgres'
+database_port: 5432
+database_name: 'nom'
+database_username: 'nom'
+database_password: 'change-me'
+
+refiner_data_store_directory: '/data/refiner'
+pillars_off_chain_data_directory: '/data/pillars'
+statistics_data_store_directory: '/data/stats'
+
+donation_address_znn: ''

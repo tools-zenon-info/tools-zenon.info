@@ -1,0 +1,50 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$DOMAIN_FRONTEND} {
+    root * /srv
+    try_files {path} /index.html
+    file_server
+    encode gzip zstd
+}
+
+{$DOMAIN_API} {
+    # Only accept browser requests that originated from the SPA.
+    # Missing or mismatched Origin -> 403. Spoofable by non-browser clients
+    # (curl/Postman) but blocks casual cross-origin abuse and scraping from
+    # other websites' JS.
+    @bad_origin not header Origin https://{$DOMAIN_FRONTEND}
+    handle @bad_origin {
+        respond "Forbidden" 403
+    }
+
+    # CORS preflight: answer directly so zt-server never sees OPTIONS noise.
+    @options method OPTIONS
+    handle @options {
+        header {
+            Access-Control-Allow-Origin "https://{$DOMAIN_FRONTEND}"
+            Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+            Access-Control-Allow-Headers "Content-Type, Authorization"
+            Access-Control-Max-Age "3600"
+            Vary "Origin"
+        }
+        respond 204
+    }
+
+    # Real requests: strip upstream's wide-open CORS headers, set our own.
+    handle {
+        header {
+            Access-Control-Allow-Origin "https://{$DOMAIN_FRONTEND}"
+            Vary "Origin"
+        }
+        reverse_proxy zt-server:8080 {
+            header_down -Access-Control-Allow-Origin
+            header_down -Access-Control-Allow-Methods
+            header_down -Access-Control-Allow-Headers
+            header_down -Access-Control-Allow-Credentials
+        }
+    }
+
+    encode gzip zstd
+}
