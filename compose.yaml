@@ -83,8 +83,9 @@ services:
 
   nom-indexer:
     build:
-      context: ../nom-indexer
-      dockerfile: ../tools.zenon.info/dockerfiles/indexer.Dockerfile
+      # Builds from the public repo. Override locally via compose.local.yaml
+      # (see COMPOSE_FILE in .env.local). Each service repo owns its Dockerfile.
+      context: https://github.com/tools-zenon-info/nom-indexer.git#main
     restart: unless-stopped
     depends_on:
       postgres:
@@ -98,8 +99,7 @@ services:
 
   nom-refiner:
     build:
-      context: ../nom-data-refiner
-      dockerfile: ../tools.zenon.info/dockerfiles/refiner.Dockerfile
+      context: https://github.com/tools-zenon-info/nom-data-refiner.git#main
     restart: unless-stopped
     depends_on:
       znnd:
@@ -112,8 +112,7 @@ services:
 
   eth-pool-indexer:
     build:
-      context: ../eth-pool-indexer
-      dockerfile: ../tools.zenon.info/dockerfiles/eth-pool-indexer.Dockerfile
+      context: https://github.com/tools-zenon-info/eth-pool-indexer.git#main
     restart: unless-stopped
     environment:
       ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
@@ -127,8 +126,7 @@ services:
 
   zt-server:
     build:
-      context: ../zt-server
-      dockerfile: ../tools.zenon.info/dockerfiles/zt-server.Dockerfile
+      context: https://github.com/tools-zenon-info/zt-server.git#main
     restart: unless-stopped
     depends_on:
       postgres:
@@ -147,8 +145,7 @@ services:
 
   frontend:
     build:
-      context: ../zt-frontend
-      dockerfile: ../tools.zenon.info/dockerfiles/frontend.Dockerfile
+      context: https://github.com/tools-zenon-info/zt-frontend.git#main
       args:
         ZT_API_URL: https://${DOMAIN_API}
         COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}

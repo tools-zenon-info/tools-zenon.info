@@ -1,10 +1,20 @@
 # tools.zenon.info — compose stack
 
-Docker-compose orchestration for the four `tools.zenon.info` services + supporting infrastructure.
+Docker-compose orchestration for the `tools.zenon.info` services + supporting infrastructure.
 
-## Layout
+## Build modes
 
-This repo is the orchestration layer. The four service repos are expected as siblings:
+By default `compose.yaml` builds every service from its **public GitHub repo**
+(BuildKit git-context). No local clones needed — fresh-clone this repo and
+`docker compose up -d` works.
+
+For **local iteration** on a service, copy `.env.example` → `.env.local` and
+keep the `COMPOSE_FILE=compose.yaml:compose.local.yaml` line. That auto-loads
+`compose.local.yaml`, which overrides each `build.context` to a sibling
+directory (`../zt-frontend`, `../nom-data-refiner`, etc.). Changes to local
+sibling repos get picked up by `docker compose --env-file .env.local build`.
+
+Sibling layout for local mode:
 
 ```
 Github/tools.zenon.info/
@@ -12,8 +22,13 @@ Github/tools.zenon.info/
 ├── zt-frontend/
 ├── zt-server/
 ├── nom-indexer/
-└── nom-data-refiner/
+├── nom-data-refiner/
+└── eth-pool-indexer/
 ```
+
+Each service repo owns its own `Dockerfile`. The compose repo only carries
+Dockerfiles for `znnd` (builds go-zenon from upstream) and `znnd-bootstrap`
+(a one-shot init container with no separate source repo).
 
 ## First-time setup
 
@@ -75,7 +90,10 @@ docker compose build <service>
 docker compose up -d <service>
 ```
 
-Service names: `frontend`, `zt-server`, `nom-indexer`, `nom-refiner`, `znnd`.
+Service names: `frontend`, `zt-server`, `nom-indexer`, `nom-refiner`, `eth-pool-indexer`, `znnd`.
+
+In git-context mode (default), `docker compose build <service>` re-clones from
+GitHub. To force a re-pull (skip BuildKit cache), use `--no-cache`.
 
 The frontend is a one-shot build container that writes static assets into the `frontend_dist` volume. After rebuilding:
 

@@ -1,0 +1,33 @@
+# Local-development escape hatch: build each service from a sibling clone
+# instead of pulling its source from GitHub. Lets you edit a service repo
+# and `docker compose up -d --build <svc>` to pick up changes without
+# committing/pushing first.
+#
+# Activated by setting COMPOSE_FILE=compose.yaml:compose.local.yaml
+# (already set in .env.local).
+#
+# Assumes the sibling layout:
+#   Github/tools.zenon.info/
+#   ├── tools.zenon.info/   (this repo)
+#   ├── zt-frontend/
+#   ├── zt-server/
+#   ├── nom-indexer/
+#   ├── nom-data-refiner/
+#   └── eth-pool-indexer/
+
+services:
+  nom-indexer:
+    build:
+      context: ../nom-indexer
+  nom-refiner:
+    build:
+      context: ../nom-data-refiner
+  eth-pool-indexer:
+    build:
+      context: ../eth-pool-indexer
+  zt-server:
+    build:
+      context: ../zt-server
+  frontend:
+    build:
+      context: ../zt-frontend
