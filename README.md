@@ -4,22 +4,15 @@ Docker-compose orchestration for the `tools.zenon.info` services + supporting in
 
 ## Build & deploy modes
 
-The stack supports three modes via `COMPOSE_FILE`:
+The stack supports two modes via `COMPOSE_FILE`:
 
-| Mode | `COMPOSE_FILE` value | TLS / reverse proxy | Service builds |
-|---|---|---|---|
-| **Default** | unset (just `compose.yaml`) | bundled Caddy with auto Let's Encrypt | git-context, pulled from GitHub |
-| **Local dev** | `compose.yaml:compose.local.yaml` | bundled Caddy with internal CA | local sibling clones |
-| **Portainer + caddy-docker-proxy** | `compose.yaml:compose.caddy-proxy.yaml` | external `caddy-docker-proxy` reads `caddy.*` labels | git-context, pulled from GitHub |
+| Mode | `COMPOSE_FILE` value | Service builds |
+|---|---|---|
+| **Default** (standalone server) | unset (just `compose.yaml`) | git-context, pulled from GitHub |
+| **Local dev** | `compose.yaml:compose.local.yaml` | local sibling clones |
 
-In Portainer mode, the bundled Caddy is disabled (gated behind a never-activated
-profile), a tiny `frontend-server` nginx is added to serve the SPA static files,
-and `frontend-server` + `zt-server` carry `caddy=` + `caddy.reverse_proxy=`
-labels that caddy-docker-proxy auto-routes. The two services join an external
-docker network named `caddy` (rename via `compose.caddy-proxy.yaml` if your
-external Caddy uses a different network).
-
-See **Portainer deployment** below for the step-by-step.
+In both modes the bundled Caddy handles TLS — Let's Encrypt on a real domain,
+or Caddy's internal CA for `*.localhost` in local dev.
 
 Sibling layout for local mode:
 
@@ -127,21 +120,6 @@ docker compose restart caddy
 - **`znnd_data` volume**: blockchain data, resyncable — skip in backups.
 - **API URL + CoinGecko key**: baked into the frontend at build time via `ZT_API_URL` and `COINGECKO_API_KEY` build-args. Change `.env` → `docker compose build frontend && docker compose run --rm frontend && docker compose restart caddy`.
 - **API origin lockdown**: Caddy enforces `Origin: https://$DOMAIN_FRONTEND` on every `api.$DOMAIN`-bound request. 403 for missing/wrong origin. Spoofable by non-browser clients, but blocks casual cross-origin abuse.
-
-## Portainer deployment
-
-If you're running [caddy-docker-proxy](https://github.com/lucaslorentz/caddy-docker-proxy) in a separate stack and want this stack to plug into it:
-
-1. **Stacks → Add stack → Repository**, point at this repo, compose path `compose.yaml`.
-2. Set stack environment variables (see the `.env.example` for the full list). At minimum: `DOMAIN_FRONTEND`, `DOMAIN_API`, `POSTGRES_PASSWORD`, `ETHERSCAN_API_KEY`, `COINGECKO_API_KEY`, `ZNND_GIT_REF`.
-3. **Add this env var** to opt into caddy-docker-proxy mode:
-   ```
-   COMPOSE_FILE=compose.yaml:compose.caddy-proxy.yaml
-   ```
-4. Make sure the external `caddy` network exists on the host (your caddy-docker-proxy stack typically creates it). If yours has a different name, fork `compose.caddy-proxy.yaml` and adjust `networks.caddy-proxy.name`.
-5. Deploy. caddy-docker-proxy will see the labels on `frontend-server` and `zt-server` and auto-provision Let's Encrypt + routing.
-
-**Security note**: the bundled Caddy enforces an `Origin: https://$DOMAIN_FRONTEND` check that blocks cross-origin API requests with 403. The caddy-docker-proxy override does **not** include this filter — zt-server's wide-open CORS will respond to any request. To restore the lockdown, add ordered matcher labels to the `zt-server` service in `compose.caddy-proxy.yaml`, or apply a matching directive in your caddy-docker-proxy's global Caddyfile snippet.
 
 ## Backups
 
