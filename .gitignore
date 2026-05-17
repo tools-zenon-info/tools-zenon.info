@@ -1,4 +1,7 @@
-.env
+.env*
+!.env.example
 configs/*.yaml
 configs/*.json
 !configs/*.example
+# znnd.config.json has no secrets (just HTTPVirtualHosts override) — track it.
+!configs/znnd.config.json

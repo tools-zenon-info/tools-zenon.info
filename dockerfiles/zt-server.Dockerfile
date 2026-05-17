@@ -7,7 +7,8 @@ COPY pubspec.lock* ./
 RUN dart pub get
 
 COPY . .
-RUN dart pub get --offline \
+RUN mkdir -p /out \
+ && dart pub get --offline \
  && dart compile exe bin/main.dart -o /out/server
 
 # Dart AOT exes need glibc; alpine/musl is not compatible.

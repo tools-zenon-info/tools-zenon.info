@@ -11,7 +11,10 @@ RUN apt-get update \
  && git clone https://github.com/zenon-network/go-zenon.git . \
  && git checkout "${ZNND_GIT_REF}"
 
-RUN CGO_ENABLED=0 go build -o /out/znnd ./cmd/znnd
+# CGo required: go-zenon depends on Ethereum's secp256k1 package which has C bindings.
+# golang:1.21-bookworm ships with gcc/build-essential, so no extra install needed.
+# Runtime image (debian:bookworm-slim) has matching glibc.
+RUN mkdir -p /out && go build -o /out/znnd ./cmd/znnd
 
 FROM debian:bookworm-slim
 RUN apt-get update \

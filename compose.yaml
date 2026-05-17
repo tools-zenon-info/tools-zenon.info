@@ -15,6 +15,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # zt-server's postgresql2 (resolved against Dart 2.19) only supports MD5
+      # auth. nom-indexer's newer postgresql2 (Dart 3.x) supports SCRAM, but
+      # MD5 works for both. Postgres 16 defaults to SCRAM, so we override.
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--auth-host=md5 --auth-local=md5"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./configs/postgresql.conf:/etc/postgresql/postgresql.conf:ro
@@ -60,8 +65,15 @@ services:
       - "35995:35995/udp"
     volumes:
       - znnd_data:/root/.znn
+      # Override znnd's HTTPVirtualHosts (default is empty -> localhost-only),
+      # so refiner/other clients on the docker network can reach the HTTP RPC.
+      - ./configs/znnd.config.json:/root/.znn/config.json:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -X POST http://localhost:35997 -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ledger.getFrontierMomentum\"}' || exit 1"]
+      # znnd's RPC rejects localhost-Host requests with 403 (whitelist-based),
+      # but the daemon is still alive and serving the docker network. We
+      # treat "got any HTTP response" as healthy — i.e. the RPC is bound and
+      # the process is responsive. Drop -f so 4xx codes don't fail the check.
+      test: ["CMD-SHELL", "curl -sS -o /dev/null --connect-timeout 5 http://localhost:35997 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -98,6 +110,21 @@ services:
     networks: [zt-net]
     logging: *default-logging
 
+  eth-pool-indexer:
+    build:
+      context: ../eth-pool-indexer
+      dockerfile: ../tools.zenon.info/dockerfiles/eth-pool-indexer.Dockerfile
+    restart: unless-stopped
+    environment:
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY}
+      DATA_DIR: /data/refiner
+      REFRESH_INTERVAL_SECONDS: ${ETH_POOL_REFRESH_SECONDS:-300}
+    volumes:
+      # Writes the three *_cache.json files the nom-refiner consumes.
+      - refiner_data:/data/refiner
+    networks: [zt-net]
+    logging: *default-logging
+
   zt-server:
     build:
       context: ../zt-server
@@ -124,6 +151,7 @@ services:
       dockerfile: ../tools.zenon.info/dockerfiles/frontend.Dockerfile
       args:
         ZT_API_URL: https://${DOMAIN_API}
+        COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
     # One-shot: builds static assets into the frontend_dist volume and exits.
     restart: "no"
     volumes:
