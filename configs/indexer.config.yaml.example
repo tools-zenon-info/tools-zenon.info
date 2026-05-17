@@ -1,7 +1,0 @@
-node_url_ws: 'ws://znnd:35998'
-
-database_address: 'postgres'
-database_port: 5432
-database_name: 'nom'
-database_username: 'nom'
-database_password: 'change-me'

@@ -37,14 +37,17 @@ Dockerfiles for `znnd` (builds go-zenon from upstream) and `znnd-bootstrap`
 3. Configure secrets:
 
    ```sh
-   cp .env.example .env                                                  # set domains, ACME email, DB password, ZNND_GIT_REF
-   for f in configs/*.example; do cp "$f" "${f%.example}"; done
+   cp .env.example .env                                                  # set all secrets HERE only
    ```
 
-   Edit each `configs/*` file:
-   - `configs/zt-server.config.yaml` — sync `database_password` with `.env`
-   - `configs/indexer.config.yaml` — sync `database_password` with `.env`
-   - `configs/refiner.config.json` — set `bitquery_api_key`, `ether_scan_api_key`, reference addresses
+   `.env` is the **single source of truth** for secrets. On every `docker
+   compose up`, a one-shot `config-renderer` service runs first and fills
+   in `configs/*.tmpl` → `configs/*.{yaml,json}` (gitignored) using your
+   env vars (`POSTGRES_PASSWORD`, `ETHERSCAN_API_KEY`, `COINGECKO_API_KEY`).
+
+   Templates committed in `configs/*.tmpl`. To customize non-secret fields
+   (e.g. real reference ZNN addresses in `refiner.config.json.tmpl`), edit
+   the template — those edits are committed.
 
 4. Bootstrap:
 

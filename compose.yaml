@@ -8,9 +8,40 @@ x-logging: &default-logging
 
 services:
 
+  config-renderer:
+    # Renders configs/*.tmpl into configs/*.{yaml,json} by substituting
+    # env vars from .env (or .env.local). Single source of truth for
+    # secrets is .env; the rendered files are gitignored.
+    image: alpine:3.19
+    restart: "no"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:-}
+    volumes:
+      - ./configs:/configs
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        apk add --no-cache gettext >/dev/null
+        for tmpl in /configs/*.tmpl; do
+          [ -e "$$tmpl" ] || continue
+          out="/configs/$$(basename "$$tmpl" .tmpl)"
+          envsubst < "$$tmpl" > "$$out"
+          echo "rendered $$out"
+        done
+    networks: [zt-net]
+    logging: *default-logging
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    depends_on:
+      config-renderer:
+        condition: service_completed_successfully
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -88,6 +119,8 @@ services:
       context: https://github.com/tools-zenon-info/nom-indexer.git#main
     restart: unless-stopped
     depends_on:
+      config-renderer:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       znnd:
@@ -102,6 +135,8 @@ services:
       context: https://github.com/tools-zenon-info/nom-data-refiner.git#main
     restart: unless-stopped
     depends_on:
+      config-renderer:
+        condition: service_completed_successfully
       znnd:
         condition: service_started
     volumes:
@@ -129,6 +164,8 @@ services:
       context: https://github.com/tools-zenon-info/zt-server.git#main
     restart: unless-stopped
     depends_on:
+      config-renderer:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       nom-indexer:

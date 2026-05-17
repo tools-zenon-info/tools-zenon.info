@@ -2,9 +2,9 @@ server_port: 8080
 
 database_address: 'postgres'
 database_port: 5432
-database_name: 'nom'
-database_username: 'nom'
-database_password: 'change-me'
+database_name: '${POSTGRES_DB}'
+database_username: '${POSTGRES_USER}'
+database_password: '${POSTGRES_PASSWORD}'
 
 refiner_data_store_directory: '/data/refiner'
 pillars_off_chain_info_directory: '/data/pillars'
