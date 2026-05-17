@@ -37,17 +37,23 @@ Dockerfiles for `znnd` (builds go-zenon from upstream) and `znnd-bootstrap`
 3. Configure secrets:
 
    ```sh
-   cp .env.example .env                                                  # set all secrets HERE only
+   cp .env.example .env
    ```
+
+   Then **edit `.env`** to fill in:
+   - `POSTGRES_PASSWORD` — any string
+   - `ETHERSCAN_API_KEY` — required (eth-pool-indexer fails to start without it). Free at https://etherscan.io/apis
+   - `COINGECKO_API_KEY` — required for the SPA's price charts. Free Demo key at coingecko.com → Developer Dashboard
+   - `ZNND_GIT_REF`, `ZNND_BOOTSTRAP_URL`, etc. as described in the file
 
    `.env` is the **single source of truth** for secrets. On every `docker
    compose up`, a one-shot `config-renderer` service runs first and fills
-   in `configs/*.tmpl` → `configs/*.{yaml,json}` (gitignored) using your
-   env vars (`POSTGRES_PASSWORD`, `ETHERSCAN_API_KEY`, `COINGECKO_API_KEY`).
+   in `configs/*.tmpl` → `configs/*.{yaml,json}` (gitignored) by substituting
+   your env vars. The rendered files are bind-mounted into each service.
 
    Templates committed in `configs/*.tmpl`. To customize non-secret fields
    (e.g. real reference ZNN addresses in `refiner.config.json.tmpl`), edit
-   the template — those edits are committed.
+   the template — those edits are committed and apply on every render.
 
 4. Bootstrap:
 
@@ -107,11 +113,13 @@ docker compose restart caddy
 
 ## Architecture notes
 
-- **Shared Postgres**: `nom-indexer` writes, `zt-server` reads. Same DB.
-- **Shared filesystem**: `nom-refiner` writes JSON to `refiner_data` volume (rw); `zt-server` reads it (ro).
+- **Services**: `caddy` (TLS termination + reverse proxy), `frontend` (Angular SPA, one-shot build), `zt-server` (Dart HTTP API), `nom-indexer` (Dart blockchain indexer), `nom-refiner` (Python data aggregator), `eth-pool-indexer` (Python; reads WZNN/WETH pool from Etherscan, writes JSON caches the refiner consumes — replaces Bitquery), `znnd` (Zenon node, go-zenon), `znnd-bootstrap` (one-shot init), `postgres`, `config-renderer` (one-shot init that runs envsubst on `configs/*.tmpl`).
+- **Shared Postgres**: `nom-indexer` writes, `zt-server` reads. Same DB. MD5 auth (older Dart `postgresql2` client doesn't support SCRAM).
+- **Shared filesystem**: `nom-refiner` and `eth-pool-indexer` both write JSON files into the `refiner_data` volume; `zt-server` reads them (ro). eth-pool-indexer keeps the pool-related cache files fresh so the refiner never falls back to its Bitquery/Etherscan code paths.
 - **`pillars_data` and `stats_data` volumes**: operator-supplied, start empty. `zt-server`'s pillar-update endpoint populates pillars data via signed writes; statistics data comes from a separate periodic job not in this stack. Both are irreplaceable — include in backups.
 - **`znnd_data` volume**: blockchain data, resyncable — skip in backups.
-- **API URL**: baked into the frontend at build time via the `ZT_API_URL` build-arg. Change `.env` → `docker compose build frontend && docker compose run --rm frontend && docker compose restart caddy`.
+- **API URL + CoinGecko key**: baked into the frontend at build time via `ZT_API_URL` and `COINGECKO_API_KEY` build-args. Change `.env` → `docker compose build frontend && docker compose run --rm frontend && docker compose restart caddy`.
+- **API origin lockdown**: Caddy enforces `Origin: https://$DOMAIN_FRONTEND` on every `api.$DOMAIN`-bound request. 403 for missing/wrong origin. Spoofable by non-browser clients, but blocks casual cross-origin abuse.
 
 ## Backups
 
